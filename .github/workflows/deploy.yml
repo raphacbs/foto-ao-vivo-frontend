@@ -3,7 +3,7 @@ name: Deploy Frontend React para Produção
 on:
   push:
     branches: 
-      - master # O pipeline roda automaticamente ao atualizar a master
+      - main # O pipeline roda automaticamente ao atualizar a master
 
 env:
   REGISTRY: ghcr.io
