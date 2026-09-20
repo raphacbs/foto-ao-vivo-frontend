@@ -9,11 +9,32 @@ export default function Show(){
   const [phrase, setPhrase] = useState('')
   const [qrDataUrl, setQrDataUrl] = useState(null)
   const [defaultTimeSec, setDefaultTimeSec] = useState(6)
+  const [celebrationMessage, setCelebrationMessage] = useState('')
   const socketRef = useRef()
   const idxRef = useRef(0)
+  const photosRef = useRef([])
+  const priorityPhotoIdRef = useRef(null)
+  const resumePhotoIdRef = useRef(null)
+  const celebrationTimerRef = useRef(null)
   const [index, setIndex] = useState(0)
   const [variantKey, setVariantKey] = useState('fade')
   const timerRef = useRef()
+
+  const celebrationPhrases = [
+    'Oba! Nova foto!',
+    'Que massa! Mais uma fotinha!',
+    'Olha so! Chegou foto nova!',
+    'Uhuu! Mais um clique entrou!',
+    'Que demais! Nova lembranca na tela!',
+  ]
+
+  useEffect(() => {
+    idxRef.current = index
+  }, [index])
+
+  useEffect(() => {
+    photosRef.current = photos
+  }, [photos])
 
   // define a set of transition variants to choose randomly
   const variants = {
@@ -92,10 +113,32 @@ export default function Show(){
     socketRef.current = createSocketConnection()
     socketRef.current.on('new-photo', photo => {
       logInfo('show', 'Socket event new-photo', { id: photo?.id })
+      const currentPhotos = photosRef.current
+      const currentIndex = idxRef.current
+      const currentDisplayed = currentPhotos.length
+        ? currentPhotos[currentIndex % currentPhotos.length]
+        : null
+
+      if (!resumePhotoIdRef.current && currentDisplayed?.id) {
+        resumePhotoIdRef.current = currentDisplayed.id
+      }
+
+      priorityPhotoIdRef.current = photo?.id || null
+
+      const phrase = celebrationPhrases[Math.floor(Math.random() * celebrationPhrases.length)]
+      setCelebrationMessage(phrase)
+      clearTimeout(celebrationTimerRef.current)
+      celebrationTimerRef.current = setTimeout(() => {
+        setCelebrationMessage('')
+      }, 2600)
+
       setPhotos((p) => [photo, ...p.filter((x) => x.id !== photo?.id)])
       setVariantKey(pickRandomVariant())
       setIndex(0)
-      logInfo('show', 'New photo promoted to priority display', { id: photo?.id })
+      logInfo('show', 'New photo promoted to priority display', {
+        id: photo?.id,
+        resumePhotoId: resumePhotoIdRef.current,
+      })
     })
     socketRef.current.on('delete-photo', ({id}) => {
       logInfo('show', 'Socket event delete-photo', { id })
@@ -120,6 +163,7 @@ export default function Show(){
     return ()=> {
       logInfo('show', 'Disconnecting socket on unmount')
       socketRef.current.disconnect()
+      clearTimeout(celebrationTimerRef.current)
     }
   },[])
 
@@ -138,7 +182,27 @@ export default function Show(){
           transitionMs: Math.max(1000, t),
         })
         timerRef.current = setTimeout(()=>{
-          const next = (i+1) % photos.length
+          let next = (i+1) % photos.length
+
+          if (priorityPhotoIdRef.current && cur?.id === priorityPhotoIdRef.current) {
+            const resumeId = resumePhotoIdRef.current
+            if (resumeId) {
+              const resumeIdx = photos.findIndex((p) => p.id === resumeId)
+              if (resumeIdx >= 0) {
+                next = resumeIdx
+              }
+            }
+
+            logInfo('show', 'Returning to paused photo after priority display', {
+              priorityPhotoId: priorityPhotoIdRef.current,
+              resumePhotoId: resumePhotoIdRef.current,
+              nextIndex: next,
+            })
+
+            priorityPhotoIdRef.current = null
+            resumePhotoIdRef.current = null
+          }
+
           // pick a new random variant different from current
           let v = pickRandomVariant()
           // avoid same variant twice in a row
@@ -174,6 +238,21 @@ export default function Show(){
         </div>
 
         <div className="stage">
+          <AnimatePresence>
+            {celebrationMessage && (
+              <motion.div
+                key={celebrationMessage}
+                className="celebration-banner"
+                initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -16, scale: 0.97 }}
+                transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
+              >
+                {celebrationMessage}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <AnimatePresence mode="wait">
             { !current ? (
               <motion.h2 className="empty" key="empty" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} transition={{duration:0.5}}>Nenhuma foto ainda</motion.h2>
@@ -201,7 +280,8 @@ export default function Show(){
           <div className="qr-wrap">
             <a className="qr" href={uploadUrl} target="_blank" rel="noopener noreferrer" title="Abrir página de envio">
               <motion.img src={qrDataUrl} alt="qr" initial={{scale:0.6, opacity:0}} animate={{scale:1, opacity:1}} transition={{duration:0.6}} />
-              <div className="qr-label">Enviar foto</div>
+              <div className="qr-label">Participe enviando sua foto</div>
+              <div className="qr-hint">Aponte a camera e envie para aparecer no telao</div>
             </a>
           </div>
         )}

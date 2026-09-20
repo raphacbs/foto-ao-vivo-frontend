@@ -35,6 +35,7 @@ export default function Upload(){
   const [uploading, setUploading] = useState(false)
   const [feedback, setFeedback] = useState({ open: false, message: '', severity: 'info' })
   const [selected, setSelected] = useState(null)
+  const pinchStateRef = useRef(null)
 
   const EMOJIS = ['😄','😍','😎','🎉','❤️','🔥']
 
@@ -137,6 +138,57 @@ export default function Upload(){
     e.preventDefault()
     setSelected(id)
     setDragging({ id, startX: e.clientX, startY: e.clientY })
+  }
+
+  const getTouchDistance = (t1, t2) => {
+    const dx = t1.clientX - t2.clientX
+    const dy = t1.clientY - t2.clientY
+    return Math.sqrt((dx * dx) + (dy * dy))
+  }
+
+  const onTouchStartSticker = (e, id) => {
+    if (e.touches.length === 2) {
+      e.preventDefault()
+      const distance = getTouchDistance(e.touches[0], e.touches[1])
+      const target = stickers.find((st) => st.id === id)
+      if (!target) return
+
+      pinchStateRef.current = {
+        id,
+        startDistance: distance,
+        startSize: target.size,
+      }
+      setSelected(id)
+      setDragging(null)
+      logInfo('upload', 'Pinch resize started', { id, startSize: target.size })
+      return
+    }
+
+    if (e.touches.length === 1) {
+      const t = e.touches[0]
+      setSelected(id)
+      setDragging({ id, startX: t.clientX, startY: t.clientY })
+    }
+  }
+
+  const onTouchMoveSticker = (e, id) => {
+    const pinch = pinchStateRef.current
+    if (!pinch || pinch.id !== id) return
+    if (e.touches.length !== 2) return
+
+    e.preventDefault()
+    const currentDistance = getTouchDistance(e.touches[0], e.touches[1])
+    const scale = currentDistance / pinch.startDistance
+    const nextSize = Math.max(12, Math.min(220, Math.round(pinch.startSize * scale)))
+
+    setStickers((s) => s.map((st) => (st.id === id ? { ...st, size: nextSize } : st)))
+  }
+
+  const onTouchEndSticker = (id) => {
+    if (pinchStateRef.current?.id === id) {
+      logInfo('upload', 'Pinch resize finished', { id })
+      pinchStateRef.current = null
+    }
   }
 
   const adjustStickerSize = (id, delta) => {
@@ -261,6 +313,23 @@ export default function Upload(){
           <Stack spacing={2.5}>
             <Typography className="title" component="h1">Foto Ao Vivo</Typography>
 
+            <Box
+              sx={{
+                px: 2,
+                py: 1.5,
+                borderRadius: 2,
+                border: '1px solid rgba(255,255,255,0.15)',
+                background: 'linear-gradient(90deg, rgba(255,122,24,0.18), rgba(255,78,80,0.14))',
+              }}
+            >
+              <Typography sx={{ fontWeight: 800, color: '#fff', textAlign: 'center' }}>
+                Envie sua foto para alegrar a festa e aparecer no telao!
+              </Typography>
+              <Typography sx={{ mt: 0.4, fontSize: 13, color: 'rgba(255,255,255,0.86)', textAlign: 'center' }}>
+                Capriche no clique, adicione stickers e compartilhe seu momento.
+              </Typography>
+            </Box>
+
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} className="controls">
               <Button
                 variant="contained"
@@ -314,6 +383,10 @@ export default function Upload(){
                   <div
                     key={st.id}
                     onPointerDown={(e)=>onPointerDownSticker(e, st.id)}
+                    onTouchStart={(e)=>onTouchStartSticker(e, st.id)}
+                    onTouchMove={(e)=>onTouchMoveSticker(e, st.id)}
+                    onTouchEnd={()=>onTouchEndSticker(st.id)}
+                    onTouchCancel={()=>onTouchEndSticker(st.id)}
                     onClick={(e)=>{ e.stopPropagation(); setSelected(st.id) }}
                     className={"sticker" + (selected===st.id ? ' sticker-selected' : '')}
                     style={{left:st.x, top:st.y, fontSize:st.size}}
