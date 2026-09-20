@@ -1,6 +1,24 @@
 import React, { useRef, useState, useEffect } from 'react'
 import { uploadPhoto } from '../api'
 import { logError, logInfo } from '../logger'
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  CircularProgress,
+  IconButton,
+  Snackbar,
+  Stack,
+  Typography,
+} from '@mui/material'
+import CameraAltRoundedIcon from '@mui/icons-material/CameraAltRounded'
+import PhotoLibraryRoundedIcon from '@mui/icons-material/PhotoLibraryRounded'
+import SendRoundedIcon from '@mui/icons-material/SendRounded'
+import AddRoundedIcon from '@mui/icons-material/AddRounded'
+import RemoveRoundedIcon from '@mui/icons-material/RemoveRounded'
+import DeleteRoundedIcon from '@mui/icons-material/DeleteRounded'
 
 export default function Upload(){
   const inputRef = useRef()
@@ -14,16 +32,33 @@ export default function Upload(){
   const [dragging, setDragging] = useState(null)
   const [cameraOpen, setCameraOpen] = useState(false)
   const [capturedBlob, setCapturedBlob] = useState(null)
+  const [uploading, setUploading] = useState(false)
+  const [feedback, setFeedback] = useState({ open: false, message: '', severity: 'info' })
+  const [selected, setSelected] = useState(null)
 
   const EMOJIS = ['😄','😍','😎','🎉','❤️','🔥']
 
   useEffect(()=> {
-    return () => { if (preview) URL.revokeObjectURL(preview); if (capturedBlob) URL.revokeObjectURL(URL.createObjectURL(capturedBlob)) }
-  },[preview, capturedBlob])
+    return () => {
+      if (preview) URL.revokeObjectURL(preview)
+    }
+  },[preview])
+
+  const notify = (severity, message) => {
+    setFeedback({ open: true, severity, message })
+  }
+
+  const closeFeedback = () => {
+    setFeedback((f) => ({ ...f, open: false }))
+  }
 
   const onFile = (e) => {
     const f = e.target.files?.[0]
     if (!f) return
+    if (!f.type?.startsWith('image/')) {
+      notify('warning', 'Selecione um arquivo de imagem válido.')
+      return
+    }
     logInfo('upload', 'File selected from gallery', {
       name: f.name,
       type: f.type,
@@ -35,6 +70,14 @@ export default function Upload(){
   }
 
   const openCamera = async () => {
+    const canUseStreamCamera = Boolean(window.isSecureContext && navigator.mediaDevices?.getUserMedia)
+    if (!canUseStreamCamera) {
+      logInfo('upload', 'Camera API unavailable, using file input fallback')
+      notify('info', 'Câmera direta indisponível neste navegador. Abrindo seletor de arquivos.')
+      inputRef.current?.click()
+      return
+    }
+
     try {
       logInfo('upload', 'Opening camera')
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
@@ -44,8 +87,8 @@ export default function Upload(){
       setCameraOpen(true)
       logInfo('upload', 'Camera opened successfully')
     } catch (e) {
-      alert('Não foi possível acessar a câmera')
       logError('upload', 'Failed to open camera', { message: e?.message })
+      notify('error', 'Não foi possível abrir a câmera. Use a galeria para enviar a foto.')
     }
   }
 
@@ -69,6 +112,7 @@ export default function Upload(){
     c.toBlob(b => {
       if (!b) {
         logError('upload', 'Camera capture failed: empty blob')
+        notify('error', 'Falha ao capturar imagem da câmera.')
         return
       }
       setCapturedBlob(b)
@@ -76,11 +120,10 @@ export default function Upload(){
       setPreview(url)
       setFile(null)
       logInfo('upload', 'Photo captured from camera', { size: b.size })
+      notify('success', 'Foto capturada com sucesso.')
       closeCamera()
     }, 'image/png')
   }
-
-  const [selected, setSelected] = useState(null)
 
   const addSticker = (emoji) => {
     const id = Date.now().toString()
@@ -119,71 +162,81 @@ export default function Upload(){
     return () => { window.removeEventListener('pointermove', onPointerMove); window.removeEventListener('pointerup', onPointerUp) }
   },[dragging])
 
-  const [uploading, setUploading] = useState(false)
-  const [toast, setToast] = useState(null)
+  const canvasToBlob = (canvas, type, quality) => new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('Canvas blob generation failed'))
+        return
+      }
+      resolve(blob)
+    }, type, quality)
+  })
 
   const composeAndSend = async () => {
     if (!preview) {
       logInfo('upload', 'Upload prevented: no preview image')
-      return alert('Selecione ou capture uma foto')
-    }
-    setUploading(true)
-    const img = imgRef.current
-    const naturalW = img.naturalWidth
-    const naturalH = img.naturalHeight
-
-    const displayRect = containerRef.current.getBoundingClientRect()
-    const displayedW = img.width
-    const displayedH = img.height
-    const scaleX = naturalW / displayedW
-    const scaleY = naturalH / displayedH
-
-    const canvas = document.createElement('canvas')
-    canvas.width = naturalW
-    canvas.height = naturalH
-    const ctx = canvas.getContext('2d')
-
-    // draw base image
-    await new Promise((resolve) => {
-      const base = new Image()
-      base.crossOrigin = 'anonymous'
-      base.onload = () => { ctx.drawImage(base, 0, 0, naturalW, naturalH); resolve() }
-      base.src = preview
-    })
-
-    // draw stickers (as text emoji)
-    for (const st of stickers) {
-      // st.x/st.y are recorded in pixels relative to the preview container (center point due to translate(-50%,-50%))
-      const fontSize = st.size * ((scaleX + scaleY)/2)
-      // compute top-left for drawing since on DOM we center with translate(-50%,-50%)
-      const sx = (st.x * scaleX) - (fontSize/2)
-      const sy = (st.y * scaleY) - (fontSize/2)
-      ctx.font = `${fontSize}px serif`
-      ctx.textAlign = 'left'
-      ctx.textBaseline = 'top'
-      ctx.fillText(st.emoji, sx, sy)
-    }
-
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
-    if (!blob) {
-      setUploading(false)
-      logError('upload', 'Failed to generate composed image blob')
-      alert('Falha ao preparar imagem')
+      notify('warning', 'Selecione ou capture uma foto antes de enviar.')
       return
     }
-    const fd = new FormData()
-    fd.append('photo', blob, 'composed.png')
-    logInfo('upload', 'Sending composed image', {
-      stickerCount: stickers.length,
-      outputSize: blob.size,
-    })
+    setUploading(true)
+
     try {
+      const img = imgRef.current
+      const naturalW = img.naturalWidth
+      const naturalH = img.naturalHeight
+      const displayedW = img.width
+      const displayedH = img.height
+      const scaleX = naturalW / displayedW
+      const scaleY = naturalH / displayedH
+
+      const canvas = document.createElement('canvas')
+      canvas.width = naturalW
+      canvas.height = naturalH
+      const ctx = canvas.getContext('2d')
+
+      await new Promise((resolve, reject) => {
+        const base = new Image()
+        base.crossOrigin = 'anonymous'
+        base.onload = () => {
+          ctx.drawImage(base, 0, 0, naturalW, naturalH)
+          resolve()
+        }
+        base.onerror = () => reject(new Error('Falha ao carregar imagem de pré-visualização'))
+        base.src = preview
+      })
+
+      for (const st of stickers) {
+        const fontSize = st.size * ((scaleX + scaleY) / 2)
+        const sx = (st.x * scaleX) - (fontSize / 2)
+        const sy = (st.y * scaleY) - (fontSize / 2)
+        ctx.font = `${fontSize}px serif`
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+        ctx.fillText(st.emoji, sx, sy)
+      }
+
+      const MAX_DIMENSION = 1920
+      const resizeRatio = Math.min(1, MAX_DIMENSION / Math.max(naturalW, naturalH))
+      const outputCanvas = document.createElement('canvas')
+      outputCanvas.width = Math.max(1, Math.round(naturalW * resizeRatio))
+      outputCanvas.height = Math.max(1, Math.round(naturalH * resizeRatio))
+      const outputCtx = outputCanvas.getContext('2d')
+      outputCtx.drawImage(canvas, 0, 0, outputCanvas.width, outputCanvas.height)
+
+      const blob = await canvasToBlob(outputCanvas, 'image/jpeg', 0.86)
+      const fd = new FormData()
+      fd.append('photo', blob, 'composed.jpg')
+
+      logInfo('upload', 'Sending composed image', {
+        stickerCount: stickers.length,
+        outputSize: blob.size,
+        width: outputCanvas.width,
+        height: outputCanvas.height,
+      })
+
       await uploadPhoto(fd)
-      // show non-blocking confirmation and clear preview so user can send another
-      setToast('Foto enviada com sucesso!')
       setFile(null); setPreview(null); setStickers([]); setCapturedBlob(null)
-      // hide toast after 3s
-      setTimeout(()=>setToast(null), 3000)
+      notify('success', 'Foto enviada com sucesso!')
       logInfo('upload', 'Image upload completed successfully')
     } catch (e) {
       logError('upload', 'Image upload failed', {
@@ -191,70 +244,128 @@ export default function Upload(){
         status: e?.response?.status,
         response: e?.response?.data,
       })
-      alert('Falha no upload')
+      if (e?.response?.status === 413) {
+        notify('error', 'Imagem muito grande. Tente uma foto menor.')
+      } else {
+        notify('error', e?.response?.data?.error || 'Falha no upload.')
+      }
     } finally {
       setUploading(false)
     }
   }
 
   return (
-    <div className="upload-page">
-      <h1 className="title">Foto Ao Vivo</h1>
+    <Box className="upload-page">
+      <Card className="upload-card" elevation={0}>
+        <CardContent>
+          <Stack spacing={2.5}>
+            <Typography className="title" component="h1">Foto Ao Vivo</Typography>
 
-      <div className="controls">
-        <button className="btn primary" onClick={openCamera} disabled={uploading}>Abrir câmera</button>
-        <label className="btn secondary" aria-disabled={uploading}>
-          Selecionar da galeria
-          <input ref={inputRef} type="file" accept="image/*" capture="environment" onChange={onFile} style={{display:'none'}} disabled={uploading} />
-        </label>
-      </div>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} className="controls">
+              <Button
+                variant="contained"
+                size="large"
+                startIcon={<CameraAltRoundedIcon />}
+                onClick={openCamera}
+                disabled={uploading}
+              >
+                Abrir câmera
+              </Button>
+              <Button
+                variant="outlined"
+                size="large"
+                component="label"
+                startIcon={<PhotoLibraryRoundedIcon />}
+                disabled={uploading}
+              >
+                Selecionar da galeria
+                <input
+                  ref={inputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={onFile}
+                  hidden
+                  disabled={uploading}
+                />
+              </Button>
+            </Stack>
 
-      {cameraOpen && (
-        <div className="camera-wrap">
-          <video ref={videoRef} className="camera-view" playsInline muted />
-          <div className="camera-actions">
-            <button className="btn danger" onClick={closeCamera}>Fechar</button>
-            <button className="btn primary" onClick={captureFromCamera}>Capturar</button>
-          </div>
-        </div>
-      )}
+            {cameraOpen && (
+              <Box className="camera-wrap">
+                <video ref={videoRef} className="camera-view" playsInline muted />
+                <Stack direction="row" spacing={1} className="camera-actions">
+                  <Button color="inherit" variant="outlined" onClick={closeCamera}>Fechar</Button>
+                  <Button variant="contained" onClick={captureFromCamera}>Capturar</Button>
+                </Stack>
+              </Box>
+            )}
 
-      <div className="sticker-palette">
-        {EMOJIS.map(e => (
-          <button key={e} className="emoji-btn" onClick={() => addSticker(e)}>{e}</button>
-        ))}
-      </div>
-
-      {preview && (
-        <div ref={containerRef} className="preview-wrap">
-          <img ref={imgRef} src={preview} alt="preview" className="preview-img" />
-          {stickers.map(st => (
-            <div key={st.id}
-              onPointerDown={(e)=>onPointerDownSticker(e, st.id)}
-                  onClick={(e)=>{ e.stopPropagation(); setSelected(st.id) }}
-                  className={"sticker" + (selected===st.id ? ' sticker-selected' : '')}
-                  style={{left:st.x, top:st.y, fontSize:st.size}}>
-                  {st.emoji}
-                </div>
+            <Stack direction="row" spacing={1} className="sticker-palette" useFlexGap flexWrap="wrap">
+              {EMOJIS.map(e => (
+                <Button key={e} variant="text" className="emoji-btn" onClick={() => addSticker(e)}>{e}</Button>
               ))}
+            </Stack>
 
-              {selected && (
-                <div className="sticker-controls" style={{position:'absolute', right:8, bottom:8, display:'flex', gap:8}}>
-                  <button className="btn" onClick={()=>adjustStickerSize(selected, -8)}>-</button>
-                  <button className="btn" onClick={()=>adjustStickerSize(selected, 8)}>+</button>
-                  <button className="btn danger" onClick={()=>removeSticker(selected)}>Excluir</button>
-                </div>
-              )}
-            </div>
-          )}
+            {preview && (
+              <Box ref={containerRef} className="preview-wrap">
+                <img ref={imgRef} src={preview} alt="preview" className="preview-img" />
+                {stickers.map(st => (
+                  <div
+                    key={st.id}
+                    onPointerDown={(e)=>onPointerDownSticker(e, st.id)}
+                    onClick={(e)=>{ e.stopPropagation(); setSelected(st.id) }}
+                    className={"sticker" + (selected===st.id ? ' sticker-selected' : '')}
+                    style={{left:st.x, top:st.y, fontSize:st.size}}
+                  >
+                    {st.emoji}
+                  </div>
+                ))}
 
-          <div className="actions">
-            <button className="btn success" onClick={composeAndSend} disabled={uploading}>{uploading ? 'Enviando...' : 'Enviar com stickers'}</button>
-          </div>
+                {selected && (
+                  <Stack direction="row" spacing={1} className="sticker-controls">
+                    <IconButton size="small" color="primary" onClick={()=>adjustStickerSize(selected, -8)}>
+                      <RemoveRoundedIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" color="primary" onClick={()=>adjustStickerSize(selected, 8)}>
+                      <AddRoundedIcon fontSize="small" />
+                    </IconButton>
+                    <Button
+                      color="error"
+                      variant="contained"
+                      size="small"
+                      startIcon={<DeleteRoundedIcon fontSize="small" />}
+                      onClick={()=>removeSticker(selected)}
+                    >
+                      Excluir
+                    </Button>
+                  </Stack>
+                )}
+              </Box>
+            )}
 
-      <div style={{height:32}} />
+            <Box className="actions">
+              <Button
+                variant="contained"
+                size="large"
+                startIcon={uploading ? <CircularProgress size={18} color="inherit" /> : <SendRoundedIcon />}
+                onClick={composeAndSend}
+                disabled={uploading}
+              >
+                {uploading ? 'Enviando...' : 'Enviar com stickers'}
+              </Button>
+            </Box>
+          </Stack>
+        </CardContent>
+      </Card>
 
-      {toast && <div className="toast">{toast}</div>}
-    </div>
+      <Snackbar open={feedback.open} autoHideDuration={3500} onClose={closeFeedback} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert onClose={closeFeedback} severity={feedback.severity} variant="filled" sx={{ width: '100%' }}>
+          {feedback.message}
+        </Alert>
+      </Snackbar>
+
+      <Box sx={{ height: 24 }} />
+    </Box>
   )
 }

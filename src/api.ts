@@ -80,7 +80,7 @@ export function createSocketConnection(): Socket {
 }
 
 export function getPhotoUrl(filename: string): string {
-  return `${BACKEND_BASE_URL}/uploads/${filename}`
+  return `${API_BASE_URL}/uploads/${filename}`
 }
 
 export async function uploadPhoto(formData: FormData) {
