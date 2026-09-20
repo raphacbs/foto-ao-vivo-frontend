@@ -1,0 +1,51 @@
+name: Deploy Frontend React para Produção
+
+on:
+  push:
+    branches: 
+      - master # O pipeline roda automaticamente ao atualizar a master
+
+env:
+  REGISTRY: ghcr.io
+  # Nome da imagem que será salva no GitHub Packages
+  IMAGE_NAME: raphacbs/react-frontend 
+
+jobs:
+  build-and-update:
+    runs-on: ubuntu-latest
+    # Permissões vitais: 'packages' para salvar a imagem Docker e 'contents' para editar o arquivo YAML
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v3
+
+      # Faz o login no GitHub Container Registry usando o token automático do próprio Actions
+      - name: Login no GitHub Container Registry (GHCR)
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Compila o Dockerfile e envia para o GitHub (GHCR) com o ID único do commit
+      - name: Build e Push da Imagem Docker
+        run: |
+          docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      # Altera o arquivo YAML do Kubernetes com a nova versão gerada
+      - name: Atualizar Manifesto K8s (GitOps)
+        run: |
+          # Substitui a linha "image: ..." do frontend pela nova imagem com a tag do commit atual
+          sed -i "s|image: ghcr.io/raphacbs/.*react.*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}|g" k8s/app-node.yaml
+          
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          
+          # Adiciona o arquivo modificado e faz o commit de volta no repositório
+          git add k8s/app-node.yaml
+          # A linha abaixo garante que o pipeline não quebre caso a imagem já estivesse atualizada
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: atualiza imagem react para ${{ github.sha }}" && git push)
