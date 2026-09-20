@@ -1,6 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react'
-import axios from 'axios'
-import { io } from 'socket.io-client'
+import {
+  createSocketConnection,
+  deletePhoto,
+  getConfig,
+  getPhotoUrl,
+  getPhotos,
+  setConfig,
+  updatePhotoDisplayTime,
+} from '../api'
 
 export default function Admin(){
   const [photos, setPhotos] = useState([])
@@ -11,17 +18,17 @@ export default function Admin(){
   const listRef = useRef()
 
   const load = async ()=>{
-    const r = await axios.get('http://localhost:4000/api/photos')
-    setPhotos(r.data)
-    const cfg = await axios.get('http://localhost:4000/api/config/display_time')
-    setGlobalTime(cfg.data.value ? Number(cfg.data.value) : 6)
-    const ph = await axios.get('http://localhost:4000/api/config/display_phrase')
-    setDisplayPhrase(ph.data.value || '')
+    const photosData = await getPhotos()
+    setPhotos(photosData)
+    const cfg = await getConfig('display_time')
+    setGlobalTime(cfg.value ? Number(cfg.value) : 6)
+    const ph = await getConfig('display_phrase')
+    setDisplayPhrase(ph.value || '')
   }
 
   useEffect(()=>{ 
     load()
-    socketRef.current = io('http://localhost:4000')
+    socketRef.current = createSocketConnection()
     socketRef.current.on('new-photo', (photo) => setPhotos(p => {
       // avoid duplicates
       if (p.find(x=>x.id===photo.id)) return p
@@ -36,10 +43,10 @@ export default function Admin(){
     return ()=> socketRef.current.disconnect()
   },[])
 
-  const del = async (id) => { await axios.delete(`http://localhost:4000/api/photos/${id}`); setPhotos(p=>p.filter(x=>x.id!==id)) }
-  const saveTime = async (id, time) => { await axios.put(`http://localhost:4000/api/photos/${id}`, { display_time: time }); setPhotos(p=>p.map(x=> x.id===id ? { ...x, display_time: time } : x)) }
-  const saveGlobal = async () => { await axios.put('http://localhost:4000/api/config', { key: 'display_time', value: globalTime }); alert('Salvo') }
-  const savePhrase = async () => { await axios.put('http://localhost:4000/api/config', { key: 'display_phrase', value: displayPhrase }); alert('Frase salva') }
+  const del = async (id) => { await deletePhoto(id); setPhotos(p=>p.filter(x=>x.id!==id)) }
+  const saveTime = async (id, time) => { await updatePhotoDisplayTime(id, time); setPhotos(p=>p.map(x=> x.id===id ? { ...x, display_time: time } : x)) }
+  const saveGlobal = async () => { await setConfig('display_time', globalTime); alert('Salvo') }
+  const savePhrase = async () => { await setConfig('display_phrase', displayPhrase); alert('Frase salva') }
 
   return (
     <div className="admin-page">
@@ -62,7 +69,7 @@ export default function Admin(){
       <div className="photo-list" ref={listRef}>
         {photos.map(p=> (
           <div key={p.id} className="photo-row">
-            <img src={`http://localhost:4000/uploads/${p.filename}`} alt="t" className="thumb" />
+            <img src={getPhotoUrl(p.filename)} alt="t" className="thumb" />
             <div className="meta">
               <div className="orig">{p.originalname}</div>
               <div className="controls">

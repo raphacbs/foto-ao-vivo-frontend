@@ -1,6 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react'
-import axios from 'axios'
-import { useNavigate } from 'react-router-dom'
+import { uploadPhoto } from '../api'
 
 export default function Upload(){
   const inputRef = useRef()
@@ -14,7 +13,6 @@ export default function Upload(){
   const [dragging, setDragging] = useState(null)
   const [cameraOpen, setCameraOpen] = useState(false)
   const [capturedBlob, setCapturedBlob] = useState(null)
-  const navigate = useNavigate()
 
   const EMOJIS = ['😄','😍','😎','🎉','❤️','🔥']
 
@@ -151,7 +149,7 @@ export default function Upload(){
     const fd = new FormData()
     fd.append('photo', blob, 'composed.png')
     try {
-      await axios.post('http://localhost:4000/api/upload', fd)
+      await uploadPhoto(fd)
       // show non-blocking confirmation and clear preview so user can send another
       setToast('Foto enviada com sucesso!')
       setFile(null); setPreview(null); setStickers([]); setCapturedBlob(null)

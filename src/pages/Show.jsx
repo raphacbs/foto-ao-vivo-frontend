@@ -1,8 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react'
-import axios from 'axios'
-import { io } from 'socket.io-client'
 import QRCode from 'qrcode'
 import { motion, AnimatePresence } from 'framer-motion'
+import { createSocketConnection, getConfig, getPhotoUrl, getPhotos } from '../api'
 
 export default function Show(){
   const [photos, setPhotos] = useState([])
@@ -62,12 +61,12 @@ export default function Show(){
 
   useEffect(()=>{
     const load = async () => {
-      const r = await axios.get('http://localhost:4000/api/photos')
-      setPhotos(r.data)
-      const cfgP = await axios.get('http://localhost:4000/api/config/display_phrase')
-      setPhrase(cfgP.data.value || 'Compartilhe suas melhores fotos!')
-      const cfgT = await axios.get('http://localhost:4000/api/config/display_time')
-      setDefaultTimeSec(cfgT.data.value ? Number(cfgT.data.value) : 6)
+      const photosData = await getPhotos()
+      setPhotos(photosData)
+      const cfgP = await getConfig('display_phrase')
+      setPhrase(cfgP.value || 'Compartilhe suas melhores fotos!')
+      const cfgT = await getConfig('display_time')
+      setDefaultTimeSec(cfgT.value ? Number(cfgT.value) : 6)
 
       // generate QR for upload page locally
       const uploadUrl = (typeof window !== 'undefined') ? `${window.location.origin}/upload` : '/upload'
@@ -78,7 +77,7 @@ export default function Show(){
     }
     load()
 
-    socketRef.current = io('http://localhost:4000')
+    socketRef.current = createSocketConnection()
     socketRef.current.on('new-photo', photo => setPhotos(p=>[...p, photo]))
     socketRef.current.on('delete-photo', ({id}) => setPhotos(p=>p.filter(x=>x.id!==id)))
     socketRef.current.on('update-photo', (photo)=>{
@@ -153,7 +152,7 @@ export default function Show(){
                 >
                   <img
                     className="show-photo"
-                    src={`http://localhost:4000/uploads/${current.filename}`}
+                    src={getPhotoUrl(current.filename)}
                     alt="show"
                   />
                 </motion.div>
