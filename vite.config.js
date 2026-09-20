@@ -6,8 +6,9 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:4000',
         changeOrigin: true,
+        ws: true,
       },
-      '/socket.io': {
+      '/api/socket.io': {
         target: 'http://localhost:4000',
         ws: true,
         changeOrigin: true,

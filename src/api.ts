@@ -18,6 +18,10 @@ const BACKEND_BASE_URL = API_BASE_URL === '/api'
   : API_BASE_URL.endsWith('/api')
     ? API_BASE_URL.slice(0, -4)
     : API_BASE_URL
+const API_PATH_PREFIX = API_BASE_URL.startsWith('http')
+  ? new URL(API_BASE_URL).pathname.replace(/\/$/, '') || '/api'
+  : API_BASE_URL
+const SOCKET_PATH = `${API_PATH_PREFIX}/socket.io`
 
 const http = axios.create({
   baseURL: API_BASE_URL,
@@ -64,10 +68,16 @@ async function unwrap<T>(request: Promise<{ data: T }>): Promise<T> {
 }
 
 export function createSocketConnection(): Socket {
-  const socket = BACKEND_BASE_URL ? io(BACKEND_BASE_URL) : io()
+  const socket = BACKEND_BASE_URL
+    ? io(BACKEND_BASE_URL, { path: SOCKET_PATH })
+    : io({ path: SOCKET_PATH })
 
   socket.on('connect', () => {
-    logInfo('socket', 'Socket connected', { id: socket.id, endpoint: BACKEND_BASE_URL || window.location.origin })
+    logInfo('socket', 'Socket connected', {
+      id: socket.id,
+      endpoint: BACKEND_BASE_URL || window.location.origin,
+      path: SOCKET_PATH,
+    })
   })
   socket.on('disconnect', (reason) => {
     logInfo('socket', 'Socket disconnected', { reason })

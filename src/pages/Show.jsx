@@ -92,7 +92,10 @@ export default function Show(){
     socketRef.current = createSocketConnection()
     socketRef.current.on('new-photo', photo => {
       logInfo('show', 'Socket event new-photo', { id: photo?.id })
-      setPhotos(p=>[...p, photo])
+      setPhotos((p) => [photo, ...p.filter((x) => x.id !== photo?.id)])
+      setVariantKey(pickRandomVariant())
+      setIndex(0)
+      logInfo('show', 'New photo promoted to priority display', { id: photo?.id })
     })
     socketRef.current.on('delete-photo', ({id}) => {
       logInfo('show', 'Socket event delete-photo', { id })
