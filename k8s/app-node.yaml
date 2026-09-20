@@ -1,0 +1,77 @@
+---
+# -----------------------------
+# FRONTEND (REACT)
+# -----------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: react-frontend-svc
+spec:
+  selector:
+    app: react-frontend
+  ports:
+    - port: 80
+      targetPort: 80
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: react-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: react-frontend
+  template:
+    metadata:
+      labels:
+        app: react-frontend
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: react-frontend
+          image: ghcr.io/raphacbs/react-frontend:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+
+---
+# -----------------------------
+# ROTEAMENTO (INGRESS)
+# -----------------------------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-completa-ingress
+  annotations:
+    ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  rules:
+    - host: meunovoapp.184.107.88.245.nip.io # Coloque o subdomínio que desejar
+      http:
+        paths:
+          # Tudo que começar com /api vai para o Node.js
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: node-backend-svc
+                port:
+                  number: 3000
+          
+          # Qualquer outra coisa (/) vai para o Nginx do React
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: react-frontend-svc
+                port:
+                  number: 80
