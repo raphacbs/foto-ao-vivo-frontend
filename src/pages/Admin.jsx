@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { Alert, Dialog, DialogActions, DialogContent, DialogTitle, Snackbar } from '@mui/material'
+import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Snackbar } from '@mui/material'
 import {
   createSocketConnection,
   deletePhoto,
@@ -261,8 +261,8 @@ export default function Admin(){
           Excluir {selectedPhotoIds.length} fotos selecionadas?
         </DialogContent>
         <DialogActions>
-          <button className="btn" onClick={() => setConfirmDeleteOpen(false)}>Cancelar</button>
-          <button className="btn danger" onClick={deleteBatch} disabled={batchDeleting}>Confirmar</button>
+          <Button onClick={() => setConfirmDeleteOpen(false)} disabled={batchDeleting}>Cancelar</Button>
+          <Button color="error" variant="contained" onClick={deleteBatch} disabled={batchDeleting}>Confirmar</Button>
         </DialogActions>
       </Dialog>
 
