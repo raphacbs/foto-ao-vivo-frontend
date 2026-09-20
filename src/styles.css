@@ -23,8 +23,33 @@ body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvet
 .camera-view { width:100%; max-width:600px; border-radius:12px; background:#000 }
 .camera-actions { display:flex; gap:8px }
 
-.sticker-palette { display:flex; gap:8px; justify-content:center; margin-bottom:12px }
-.emoji-btn { font-size:22px; padding:8px; border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; border:none }
+.sticker-palette {
+  display:flex;
+  gap:10px;
+  justify-content:center;
+  align-items:center;
+  width: 100%;
+  max-width: 290px;
+  margin: 0 auto 12px;
+  margin-bottom:12px;
+} 
+.emoji-btn {
+  font-size:40px;
+  min-width:78px;
+  min-height:78px;
+  border-radius:14px;
+  background:rgba(255,255,255,0.05);
+  color:#fff;
+  border:1px solid rgba(255,255,255,0.1);
+}
+
+@media(max-width:720px){
+  .emoji-btn {
+    font-size: 42px;
+    min-width: 84px;
+    min-height: 84px;
+  }
+}
 
 .preview-wrap { position:relative; width:100%; max-width:600px; margin:0 auto; border-radius:12px; overflow:hidden }
 .preview-img { width:100%; height:auto; display:block; border-radius:12px }
