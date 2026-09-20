@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react'
 import QRCode from 'qrcode'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createSocketConnection, getConfig, getPhotoUrl, getPhotos } from '../api'
+import { logError, logInfo } from '../logger'
 
 export default function Show(){
   const [photos, setPhotos] = useState([])
@@ -61,36 +62,62 @@ export default function Show(){
 
   useEffect(()=>{
     const load = async () => {
+      logInfo('show', 'Loading initial show data')
       const photosData = await getPhotos()
       setPhotos(photosData)
+      logInfo('show', 'Initial photo list loaded', { count: photosData.length })
       const cfgP = await getConfig('display_phrase')
       setPhrase(cfgP.value || 'Compartilhe suas melhores fotos!')
       const cfgT = await getConfig('display_time')
       setDefaultTimeSec(cfgT.value ? Number(cfgT.value) : 6)
+      logInfo('show', 'Initial configs loaded', {
+        phraseSet: Boolean(cfgP.value),
+        defaultTimeSec: cfgT.value ? Number(cfgT.value) : 6,
+      })
 
       // generate QR for upload page locally
       const uploadUrl = (typeof window !== 'undefined') ? `${window.location.origin}/upload` : '/upload'
       try {
         const url = await QRCode.toDataURL(uploadUrl, { margin: 1, width: 500 })
         setQrDataUrl(url)
-      } catch (e) { console.error('QR gen failed', e) }
+        logInfo('show', 'QR code generated', { uploadUrl })
+      } catch (e) {
+        logError('show', 'QR generation failed', { message: e?.message })
+      }
     }
-    load()
+    load().catch((e) => {
+      logError('show', 'Failed to load initial show data', { message: e?.message })
+    })
 
     socketRef.current = createSocketConnection()
-    socketRef.current.on('new-photo', photo => setPhotos(p=>[...p, photo]))
-    socketRef.current.on('delete-photo', ({id}) => setPhotos(p=>p.filter(x=>x.id!==id)))
+    socketRef.current.on('new-photo', photo => {
+      logInfo('show', 'Socket event new-photo', { id: photo?.id })
+      setPhotos(p=>[...p, photo])
+    })
+    socketRef.current.on('delete-photo', ({id}) => {
+      logInfo('show', 'Socket event delete-photo', { id })
+      setPhotos(p=>p.filter(x=>x.id!==id))
+    })
     socketRef.current.on('update-photo', (photo)=>{
+      logInfo('show', 'Socket event update-photo', { id: photo?.id })
       setPhotos(p=>p.map(x=> x.id===photo.id ? photo : x))
     })
     socketRef.current.on('config-updated', ({key, value}) => {
+      logInfo('show', 'Socket event config-updated', { key, value })
       if (key === 'display_phrase') setPhrase(value)
       if (key === 'display_time') setDefaultTimeSec(value ? Number(value) : 6)
       if (key === 'upload_url') {
-        QRCode.toDataURL(value).then(u=>setQrDataUrl(u)).catch(()=>{})
+        QRCode.toDataURL(value)
+          .then(u=>setQrDataUrl(u))
+          .catch((err)=>{
+            logError('show', 'QR regeneration failed', { message: err?.message })
+          })
       }
     })
-    return ()=> socketRef.current.disconnect()
+    return ()=> {
+      logInfo('show', 'Disconnecting socket on unmount')
+      socketRef.current.disconnect()
+    }
   },[])
 
   useEffect(()=>{
@@ -102,6 +129,11 @@ export default function Show(){
       const schedule = (i) => {
         const cur = photos[i % photos.length]
         const t = cur && cur.display_time ? Number(cur.display_time)*1000 : (Number(defaultTimeSec) * 1000)
+        logInfo('show', 'Scheduling next photo transition', {
+          index: i,
+          currentPhotoId: cur?.id,
+          transitionMs: Math.max(1000, t),
+        })
         timerRef.current = setTimeout(()=>{
           const next = (i+1) % photos.length
           // pick a new random variant different from current
@@ -114,6 +146,7 @@ export default function Show(){
           setVariantKey(v)
           // advance index after variant is chosen so the incoming image uses it
           setIndex(next)
+          logInfo('show', 'Photo transition executed', { from: i, to: next, variant: v })
           schedule(next)
         }, Math.max(1000, t))
       }

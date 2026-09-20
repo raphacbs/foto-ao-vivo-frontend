@@ -53,6 +53,10 @@ metadata:
   name: app-completa-ingress
   annotations:
     ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/proxy-body-size: "25m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
 spec:
   rules:
     - host: meunovoapp.184.107.88.245.nip.io # Coloque o subdomínio que desejar

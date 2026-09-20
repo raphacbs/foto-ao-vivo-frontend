@@ -8,6 +8,7 @@ import {
   setConfig,
   updatePhotoDisplayTime,
 } from '../api'
+import { logError, logInfo } from '../logger'
 
 export default function Admin(){
   const [photos, setPhotos] = useState([])
@@ -18,35 +19,73 @@ export default function Admin(){
   const listRef = useRef()
 
   const load = async ()=>{
+    logInfo('admin', 'Loading admin data')
     const photosData = await getPhotos()
     setPhotos(photosData)
     const cfg = await getConfig('display_time')
     setGlobalTime(cfg.value ? Number(cfg.value) : 6)
     const ph = await getConfig('display_phrase')
     setDisplayPhrase(ph.value || '')
+    logInfo('admin', 'Admin data loaded', {
+      photosCount: photosData.length,
+      globalTime: cfg.value ? Number(cfg.value) : 6,
+    })
   }
 
   useEffect(()=>{ 
-    load()
+    load().catch((e) => {
+      logError('admin', 'Failed to load admin data', { message: e?.message })
+    })
     socketRef.current = createSocketConnection()
     socketRef.current.on('new-photo', (photo) => setPhotos(p => {
+      logInfo('admin', 'Socket event new-photo', { id: photo?.id })
       // avoid duplicates
       if (p.find(x=>x.id===photo.id)) return p
       return [...p, photo]
     }))
-    socketRef.current.on('delete-photo', ({id}) => setPhotos(p => p.filter(x=>x.id !== id)))
-    socketRef.current.on('update-photo', (photo) => setPhotos(p => p.map(x => x.id===photo.id ? photo : x)))
+    socketRef.current.on('delete-photo', ({id}) => {
+      logInfo('admin', 'Socket event delete-photo', { id })
+      setPhotos(p => p.filter(x=>x.id !== id))
+    })
+    socketRef.current.on('update-photo', (photo) => {
+      logInfo('admin', 'Socket event update-photo', { id: photo?.id })
+      setPhotos(p => p.map(x => x.id===photo.id ? photo : x))
+    })
     socketRef.current.on('config-updated', ({key, value}) => {
+      logInfo('admin', 'Socket event config-updated', { key, value })
       if (key === 'display_time') setGlobalTime(value ? Number(value) : 6)
       if (key === 'display_phrase') setDisplayPhrase(value)
     })
-    return ()=> socketRef.current.disconnect()
+    return ()=> {
+      logInfo('admin', 'Disconnecting socket on unmount')
+      socketRef.current.disconnect()
+    }
   },[])
 
-  const del = async (id) => { await deletePhoto(id); setPhotos(p=>p.filter(x=>x.id!==id)) }
-  const saveTime = async (id, time) => { await updatePhotoDisplayTime(id, time); setPhotos(p=>p.map(x=> x.id===id ? { ...x, display_time: time } : x)) }
-  const saveGlobal = async () => { await setConfig('display_time', globalTime); alert('Salvo') }
-  const savePhrase = async () => { await setConfig('display_phrase', displayPhrase); alert('Frase salva') }
+  const del = async (id) => {
+    logInfo('admin', 'Deleting photo', { id })
+    await deletePhoto(id)
+    setPhotos(p=>p.filter(x=>x.id!==id))
+    logInfo('admin', 'Photo deleted', { id })
+  }
+  const saveTime = async (id, time) => {
+    logInfo('admin', 'Updating photo display time', { id, time })
+    await updatePhotoDisplayTime(id, time)
+    setPhotos(p=>p.map(x=> x.id===id ? { ...x, display_time: time } : x))
+    logInfo('admin', 'Photo display time updated', { id, time })
+  }
+  const saveGlobal = async () => {
+    logInfo('admin', 'Saving global display time', { globalTime })
+    await setConfig('display_time', globalTime)
+    alert('Salvo')
+    logInfo('admin', 'Global display time saved', { globalTime })
+  }
+  const savePhrase = async () => {
+    logInfo('admin', 'Saving display phrase', { displayPhrase })
+    await setConfig('display_phrase', displayPhrase)
+    alert('Frase salva')
+    logInfo('admin', 'Display phrase saved')
+  }
 
   return (
     <div className="admin-page">

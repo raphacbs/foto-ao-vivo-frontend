@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react'
 import { uploadPhoto } from '../api'
+import { logError, logInfo } from '../logger'
 
 export default function Upload(){
   const inputRef = useRef()
@@ -23,6 +24,11 @@ export default function Upload(){
   const onFile = (e) => {
     const f = e.target.files?.[0]
     if (!f) return
+    logInfo('upload', 'File selected from gallery', {
+      name: f.name,
+      type: f.type,
+      size: f.size,
+    })
     setFile(f)
     setCapturedBlob(null)
     setPreview(URL.createObjectURL(f))
@@ -30,14 +36,16 @@ export default function Upload(){
 
   const openCamera = async () => {
     try {
+      logInfo('upload', 'Opening camera')
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
       streamRef.current = stream
       videoRef.current.srcObject = stream
       videoRef.current.play()
       setCameraOpen(true)
+      logInfo('upload', 'Camera opened successfully')
     } catch (e) {
       alert('Não foi possível acessar a câmera')
-      console.error(e)
+      logError('upload', 'Failed to open camera', { message: e?.message })
     }
   }
 
@@ -47,6 +55,7 @@ export default function Upload(){
       streamRef.current = null
     }
     setCameraOpen(false)
+    logInfo('upload', 'Camera closed')
   }
 
   const captureFromCamera = () => {
@@ -58,10 +67,15 @@ export default function Upload(){
     const ctx = c.getContext('2d')
     ctx.drawImage(v, 0, 0, w, h)
     c.toBlob(b => {
+      if (!b) {
+        logError('upload', 'Camera capture failed: empty blob')
+        return
+      }
       setCapturedBlob(b)
       const url = URL.createObjectURL(b)
       setPreview(url)
       setFile(null)
+      logInfo('upload', 'Photo captured from camera', { size: b.size })
       closeCamera()
     }, 'image/png')
   }
@@ -73,6 +87,7 @@ export default function Upload(){
     // place near center
     setStickers(s=>[...s, { id, emoji, x:200, y:200, size:64 }])
     setSelected(id)
+    logInfo('upload', 'Sticker added', { id, emoji })
   }
 
   const onPointerDownSticker = (e, id) => {
@@ -87,6 +102,7 @@ export default function Upload(){
   const removeSticker = (id) => {
     setStickers(s => s.filter(st => st.id !== id))
     if (selected === id) setSelected(null)
+    logInfo('upload', 'Sticker removed', { id })
   }
 
   useEffect(()=>{
@@ -107,7 +123,10 @@ export default function Upload(){
   const [toast, setToast] = useState(null)
 
   const composeAndSend = async () => {
-    if (!preview) return alert('Selecione ou capture uma foto')
+    if (!preview) {
+      logInfo('upload', 'Upload prevented: no preview image')
+      return alert('Selecione ou capture uma foto')
+    }
     setUploading(true)
     const img = imgRef.current
     const naturalW = img.naturalWidth
@@ -146,8 +165,18 @@ export default function Upload(){
     }
 
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) {
+      setUploading(false)
+      logError('upload', 'Failed to generate composed image blob')
+      alert('Falha ao preparar imagem')
+      return
+    }
     const fd = new FormData()
     fd.append('photo', blob, 'composed.png')
+    logInfo('upload', 'Sending composed image', {
+      stickerCount: stickers.length,
+      outputSize: blob.size,
+    })
     try {
       await uploadPhoto(fd)
       // show non-blocking confirmation and clear preview so user can send another
@@ -155,8 +184,13 @@ export default function Upload(){
       setFile(null); setPreview(null); setStickers([]); setCapturedBlob(null)
       // hide toast after 3s
       setTimeout(()=>setToast(null), 3000)
+      logInfo('upload', 'Image upload completed successfully')
     } catch (e) {
-      console.error(e)
+      logError('upload', 'Image upload failed', {
+        message: e?.message,
+        status: e?.response?.status,
+        response: e?.response?.data,
+      })
       alert('Falha no upload')
     } finally {
       setUploading(false)

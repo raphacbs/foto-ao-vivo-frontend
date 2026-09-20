@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { io } from 'socket.io-client'
 import type { Socket } from 'socket.io-client'
+import { logError, logInfo } from './logger'
 
 interface ImportMetaEnv {
   readonly VITE_API_URL?: string
@@ -23,13 +24,59 @@ const http = axios.create({
   timeout: 10000,
 })
 
+logInfo('api', 'Client initialized', {
+  API_BASE_URL,
+  BACKEND_BASE_URL: BACKEND_BASE_URL || '(same-origin)',
+})
+
+http.interceptors.request.use((config) => {
+  logInfo('api', 'HTTP request started', {
+    method: config.method,
+    url: `${config.baseURL || ''}${config.url || ''}`,
+  })
+  return config
+})
+
+http.interceptors.response.use(
+  (response) => {
+    logInfo('api', 'HTTP request completed', {
+      method: response.config.method,
+      url: `${response.config.baseURL || ''}${response.config.url || ''}`,
+      status: response.status,
+    })
+    return response
+  },
+  (error) => {
+    logError('api', 'HTTP request failed', {
+      message: error?.message,
+      method: error?.config?.method,
+      url: `${error?.config?.baseURL || ''}${error?.config?.url || ''}`,
+      status: error?.response?.status,
+      response: error?.response?.data,
+    })
+    return Promise.reject(error)
+  },
+)
+
 async function unwrap<T>(request: Promise<{ data: T }>): Promise<T> {
   const { data } = await request
   return data
 }
 
 export function createSocketConnection(): Socket {
-  return BACKEND_BASE_URL ? io(BACKEND_BASE_URL) : io()
+  const socket = BACKEND_BASE_URL ? io(BACKEND_BASE_URL) : io()
+
+  socket.on('connect', () => {
+    logInfo('socket', 'Socket connected', { id: socket.id, endpoint: BACKEND_BASE_URL || window.location.origin })
+  })
+  socket.on('disconnect', (reason) => {
+    logInfo('socket', 'Socket disconnected', { reason })
+  })
+  socket.on('connect_error', (err) => {
+    logError('socket', 'Socket connection error', { message: err.message })
+  })
+
+  return socket
 }
 
 export function getPhotoUrl(filename: string): string {
