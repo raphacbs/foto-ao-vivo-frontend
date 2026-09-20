@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react'
+import { Alert, Dialog, DialogActions, DialogContent, DialogTitle, Snackbar } from '@mui/material'
 import {
   createSocketConnection,
   deletePhoto,
@@ -21,9 +22,19 @@ export default function Admin(){
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 })
   const [selectedPhotoIds, setSelectedPhotoIds] = useState([])
   const [batchDeleting, setBatchDeleting] = useState(false)
+  const [feedback, setFeedback] = useState({ open: false, message: '', severity: 'info' })
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const socketRef = useRef()
   const listRef = useRef()
   const batchInputRef = useRef()
+
+  const notify = (severity, message) => {
+    setFeedback({ open: true, severity, message })
+  }
+
+  const closeFeedback = () => {
+    setFeedback((f) => ({ ...f, open: false }))
+  }
 
   const load = async ()=>{
     logInfo('admin', 'Loading admin data')
@@ -85,13 +96,13 @@ export default function Admin(){
   const saveGlobal = async () => {
     logInfo('admin', 'Saving global display time', { globalTime })
     await setConfig('display_time', globalTime)
-    alert('Salvo')
+    notify('success', 'Tempo padrao salvo!')
     logInfo('admin', 'Global display time saved', { globalTime })
   }
   const savePhrase = async () => {
     logInfo('admin', 'Saving display phrase', { displayPhrase })
     await setConfig('display_phrase', displayPhrase)
-    alert('Frase salva')
+    notify('success', 'Frase salva!')
     logInfo('admin', 'Display phrase saved')
   }
 
@@ -116,7 +127,7 @@ export default function Admin(){
 
   const uploadBatch = async () => {
     if (!batchFiles.length) {
-      alert('Selecione imagens para enviar.')
+      notify('warning', 'Selecione imagens para enviar.')
       return
     }
 
@@ -135,7 +146,7 @@ export default function Admin(){
 
       setBatchFiles([])
       if (batchInputRef.current) batchInputRef.current.value = ''
-      alert('Upload em lote concluido!')
+      notify('success', 'Upload em lote concluido!')
       logInfo('admin', 'Batch upload completed', { total: batchProgress.total || batchFiles.length })
     } catch (e) {
       logError('admin', 'Batch upload failed', {
@@ -143,22 +154,25 @@ export default function Admin(){
         status: e?.response?.status,
         response: e?.response?.data,
       })
-      alert('Falha no upload em lote')
+      notify('error', e?.response?.data?.error || 'Falha no upload em lote')
     } finally {
       setBatchUploading(false)
     }
   }
 
-  const deleteBatch = async () => {
+  const openDeleteBatchConfirm = () => {
     if (!selectedPhotoIds.length) {
-      alert('Selecione fotos para excluir.')
+      notify('warning', 'Selecione fotos para excluir.')
       return
     }
+    setConfirmDeleteOpen(true)
+  }
 
-    const ok = window.confirm(`Excluir ${selectedPhotoIds.length} fotos selecionadas?`)
-    if (!ok) return
+  const deleteBatch = async () => {
+    if (!selectedPhotoIds.length) return
 
     setBatchDeleting(true)
+    setConfirmDeleteOpen(false)
     logInfo('admin', 'Batch delete started', { total: selectedPhotoIds.length })
 
     try {
@@ -166,7 +180,7 @@ export default function Admin(){
         await deletePhoto(selectedPhotoIds[i])
       }
       setSelectedPhotoIds([])
-      alert('Exclusao em lote concluida!')
+      notify('success', 'Exclusao em lote concluida!')
       logInfo('admin', 'Batch delete completed', { total: selectedPhotoIds.length })
     } catch (e) {
       logError('admin', 'Batch delete failed', {
@@ -174,7 +188,7 @@ export default function Admin(){
         status: e?.response?.status,
         response: e?.response?.data,
       })
-      alert('Falha na exclusao em lote')
+      notify('error', e?.response?.data?.error || 'Falha na exclusao em lote')
     } finally {
       setBatchDeleting(false)
     }
@@ -212,7 +226,7 @@ export default function Admin(){
             <button className="btn" onClick={toggleSelectAll} disabled={!photos.length || batchDeleting}>
               {selectedPhotoIds.length === photos.length && photos.length ? 'Desmarcar todas' : 'Selecionar todas'}
             </button>
-            <button className="btn danger" onClick={deleteBatch} disabled={!selectedPhotoIds.length || batchDeleting}>
+            <button className="btn danger" onClick={openDeleteBatchConfirm} disabled={!selectedPhotoIds.length || batchDeleting}>
               {batchDeleting ? 'Excluindo...' : `Excluir ${selectedPhotoIds.length || ''} selecionadas`}
             </button>
           </div>
@@ -240,6 +254,28 @@ export default function Admin(){
           </div>
         ))}
       </div>
+
+      <Dialog open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)}>
+        <DialogTitle>Confirmar exclusao</DialogTitle>
+        <DialogContent>
+          Excluir {selectedPhotoIds.length} fotos selecionadas?
+        </DialogContent>
+        <DialogActions>
+          <button className="btn" onClick={() => setConfirmDeleteOpen(false)}>Cancelar</button>
+          <button className="btn danger" onClick={deleteBatch} disabled={batchDeleting}>Confirmar</button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={feedback.open}
+        autoHideDuration={3500}
+        onClose={closeFeedback}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={closeFeedback} severity={feedback.severity} variant="filled" sx={{ width: '100%' }}>
+          {feedback.message}
+        </Alert>
+      </Snackbar>
     </div>
   )
 }
