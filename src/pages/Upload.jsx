@@ -37,7 +37,7 @@ export default function Upload(){
   const [selected, setSelected] = useState(null)
   const pinchStateRef = useRef(null)
 
-  const EMOJIS = ['😄','😍','😎','🎉','❤️','🔥']
+  const EMOJIS = ['😄','😍','😎','🎉','❤️','🔥','🥳','🤩','😂','👏','✨','📸','🎊','😺','🕶️','💃']
 
   useEffect(()=> {
     return () => {

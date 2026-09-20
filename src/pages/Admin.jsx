@@ -6,6 +6,7 @@ import {
   getPhotoUrl,
   getPhotos,
   setConfig,
+  uploadPhoto,
   updatePhotoDisplayTime,
 } from '../api'
 import { logError, logInfo } from '../logger'
@@ -15,8 +16,14 @@ export default function Admin(){
   const [globalTime, setGlobalTime] = useState(6)
 
   const [displayPhrase, setDisplayPhrase] = useState('')
+  const [batchFiles, setBatchFiles] = useState([])
+  const [batchUploading, setBatchUploading] = useState(false)
+  const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 })
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState([])
+  const [batchDeleting, setBatchDeleting] = useState(false)
   const socketRef = useRef()
   const listRef = useRef()
+  const batchInputRef = useRef()
 
   const load = async ()=>{
     logInfo('admin', 'Loading admin data')
@@ -46,6 +53,7 @@ export default function Admin(){
     socketRef.current.on('delete-photo', ({id}) => {
       logInfo('admin', 'Socket event delete-photo', { id })
       setPhotos(p => p.filter(x=>x.id !== id))
+      setSelectedPhotoIds((prev) => prev.filter((x) => x !== id))
     })
     socketRef.current.on('update-photo', (photo) => {
       logInfo('admin', 'Socket event update-photo', { id: photo?.id })
@@ -87,6 +95,91 @@ export default function Admin(){
     logInfo('admin', 'Display phrase saved')
   }
 
+  const onBatchFilesSelected = (e) => {
+    const files = Array.from(e.target.files || []).filter((f) => f.type?.startsWith('image/'))
+    setBatchFiles(files)
+    logInfo('admin', 'Batch files selected', { total: files.length })
+  }
+
+  const togglePhotoSelection = (id) => {
+    setSelectedPhotoIds((prev) => (
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    ))
+  }
+
+  const toggleSelectAll = () => {
+    setSelectedPhotoIds((prev) => {
+      if (prev.length === photos.length) return []
+      return photos.map((p) => p.id)
+    })
+  }
+
+  const uploadBatch = async () => {
+    if (!batchFiles.length) {
+      alert('Selecione imagens para enviar.')
+      return
+    }
+
+    setBatchUploading(true)
+    setBatchProgress({ done: 0, total: batchFiles.length })
+    logInfo('admin', 'Batch upload started', { total: batchFiles.length })
+
+    try {
+      for (let i = 0; i < batchFiles.length; i += 1) {
+        const file = batchFiles[i]
+        const fd = new FormData()
+        fd.append('photo', file, file.name || `photo-${Date.now()}.jpg`)
+        await uploadPhoto(fd)
+        setBatchProgress({ done: i + 1, total: batchFiles.length })
+      }
+
+      setBatchFiles([])
+      if (batchInputRef.current) batchInputRef.current.value = ''
+      alert('Upload em lote concluido!')
+      logInfo('admin', 'Batch upload completed', { total: batchProgress.total || batchFiles.length })
+    } catch (e) {
+      logError('admin', 'Batch upload failed', {
+        message: e?.message,
+        status: e?.response?.status,
+        response: e?.response?.data,
+      })
+      alert('Falha no upload em lote')
+    } finally {
+      setBatchUploading(false)
+    }
+  }
+
+  const deleteBatch = async () => {
+    if (!selectedPhotoIds.length) {
+      alert('Selecione fotos para excluir.')
+      return
+    }
+
+    const ok = window.confirm(`Excluir ${selectedPhotoIds.length} fotos selecionadas?`)
+    if (!ok) return
+
+    setBatchDeleting(true)
+    logInfo('admin', 'Batch delete started', { total: selectedPhotoIds.length })
+
+    try {
+      for (let i = 0; i < selectedPhotoIds.length; i += 1) {
+        await deletePhoto(selectedPhotoIds[i])
+      }
+      setSelectedPhotoIds([])
+      alert('Exclusao em lote concluida!')
+      logInfo('admin', 'Batch delete completed', { total: selectedPhotoIds.length })
+    } catch (e) {
+      logError('admin', 'Batch delete failed', {
+        message: e?.message,
+        status: e?.response?.status,
+        response: e?.response?.data,
+      })
+      alert('Falha na exclusao em lote')
+    } finally {
+      setBatchDeleting(false)
+    }
+  }
+
   return (
     <div className="admin-page">
       <div className="admin-header">
@@ -102,12 +195,40 @@ export default function Admin(){
             <input type="text" value={displayPhrase} onChange={e=>setDisplayPhrase(e.target.value)} />
             <button className="btn" onClick={savePhrase}>Salvar frase</button>
           </div>
+          <div className="field batch-field">
+            <label>Upload em lote</label>
+            <input ref={batchInputRef} className="batch-input" type="file" accept="image/*" multiple onChange={onBatchFilesSelected} disabled={batchUploading} />
+            <button className="btn" onClick={uploadBatch} disabled={batchUploading || batchFiles.length === 0}>
+              {batchUploading ? 'Enviando...' : `Enviar ${batchFiles.length || ''} fotos`}
+            </button>
+            {(batchUploading || batchProgress.total > 0) && (
+              <span className="batch-progress">
+                {batchProgress.done}/{batchProgress.total}
+              </span>
+            )}
+          </div>
+          <div className="field batch-field">
+            <label>Excluir em lote</label>
+            <button className="btn" onClick={toggleSelectAll} disabled={!photos.length || batchDeleting}>
+              {selectedPhotoIds.length === photos.length && photos.length ? 'Desmarcar todas' : 'Selecionar todas'}
+            </button>
+            <button className="btn danger" onClick={deleteBatch} disabled={!selectedPhotoIds.length || batchDeleting}>
+              {batchDeleting ? 'Excluindo...' : `Excluir ${selectedPhotoIds.length || ''} selecionadas`}
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="photo-list" ref={listRef}>
         {photos.map(p=> (
           <div key={p.id} className="photo-row">
+            <input
+              className="photo-check"
+              type="checkbox"
+              checked={selectedPhotoIds.includes(p.id)}
+              onChange={() => togglePhotoSelection(p.id)}
+              aria-label={`Selecionar foto ${p.originalname || p.id}`}
+            />
             <img src={getPhotoUrl(p.filename)} alt="t" className="thumb" />
             <div className="meta">
               <div className="orig">{p.originalname}</div>

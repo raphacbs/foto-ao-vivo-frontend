@@ -134,6 +134,24 @@ body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvet
 .field { display:flex; gap:8px; align-items:center; background: rgba(255,255,255,0.03); padding:10px; border-radius:12px }
 .field label { color: #cfe8ff; font-weight:600 }
 .field input[type="number"], .field input[type="text"] { padding:8px 10px; border-radius:8px; border: none; width:180px }
+.batch-field { flex-wrap: wrap; }
+.batch-input {
+  color: #dbeeff;
+  max-width: 280px;
+}
+.batch-progress {
+  color: #9fe7ff;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.06);
+}
+.photo-check {
+  width: 18px;
+  height: 18px;
+  accent-color: #ff7a18;
+  cursor: pointer;
+}
 
 .photo-list { display:flex; flex-direction:column; gap:12px; overflow:auto; padding:10px; max-height: calc(100vh - 180px); }
 .photo-row { display:flex; gap:12px; align-items:center; background: rgba(255,255,255,0.02); padding:10px; border-radius:12px }
