@@ -3,6 +3,8 @@ import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Snack
 import {
   createSocketConnection,
   deletePhoto,
+  downloadAllPhotos,
+  downloadPhoto,
   getConfig,
   getPhotoUrl,
   getPhotos,
@@ -22,6 +24,8 @@ export default function Admin(){
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 })
   const [selectedPhotoIds, setSelectedPhotoIds] = useState([])
   const [batchDeleting, setBatchDeleting] = useState(false)
+  const [batchDownloadingAll, setBatchDownloadingAll] = useState(false)
+  const [downloadingPhotoId, setDownloadingPhotoId] = useState(null)
   const [feedback, setFeedback] = useState({ open: false, message: '', severity: 'info' })
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const socketRef = useRef()
@@ -34,6 +38,17 @@ export default function Admin(){
 
   const closeFeedback = () => {
     setFeedback((f) => ({ ...f, open: false }))
+  }
+
+  const triggerBrowserDownload = (blob, filename) => {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
   }
 
   const load = async ()=>{
@@ -194,6 +209,55 @@ export default function Admin(){
     }
   }
 
+  const downloadOne = async (photo) => {
+    setDownloadingPhotoId(photo.id)
+    logInfo('admin', 'Single photo download started', { id: photo.id })
+
+    try {
+      const blob = await downloadPhoto(photo.id)
+      triggerBrowserDownload(blob, photo.originalname || photo.filename || `foto-${photo.id}.jpg`)
+      logInfo('admin', 'Single photo download completed', { id: photo.id })
+    } catch (e) {
+      logError('admin', 'Single photo download failed', {
+        id: photo.id,
+        message: e?.message,
+        status: e?.response?.status,
+        response: e?.response?.data,
+      })
+      notify('error', e?.response?.data?.error || 'Falha ao baixar a foto')
+    } finally {
+      setDownloadingPhotoId(null)
+    }
+  }
+
+  const downloadAll = async () => {
+    if (!photos.length) {
+      notify('warning', 'Nao ha fotos para baixar.')
+      return
+    }
+
+    setBatchDownloadingAll(true)
+    logInfo('admin', 'Batch photo download started', { total: photos.length })
+
+    try {
+      const blob = await downloadAllPhotos()
+      const now = new Date()
+      const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`
+      triggerBrowserDownload(blob, `fotos-${stamp}.zip`)
+      notify('success', 'Download de todas as fotos concluido!')
+      logInfo('admin', 'Batch photo download completed', { total: photos.length })
+    } catch (e) {
+      logError('admin', 'Batch photo download failed', {
+        message: e?.message,
+        status: e?.response?.status,
+        response: e?.response?.data,
+      })
+      notify('error', e?.response?.data?.error || 'Falha ao baixar todas as fotos')
+    } finally {
+      setBatchDownloadingAll(false)
+    }
+  }
+
   return (
     <div className="admin-page">
       <div className="admin-header">
@@ -230,6 +294,12 @@ export default function Admin(){
               {batchDeleting ? 'Excluindo...' : `Excluir ${selectedPhotoIds.length || ''} selecionadas`}
             </button>
           </div>
+          <div className="field batch-field">
+            <label>Baixar fotos</label>
+            <button className="btn" onClick={downloadAll} disabled={!photos.length || batchDownloadingAll}>
+              {batchDownloadingAll ? 'Baixando...' : 'Baixar todas'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -248,6 +318,9 @@ export default function Admin(){
               <div className="orig">{p.originalname}</div>
               <div className="controls">
                 <label>Tempo (s): <input type="number" defaultValue={p.display_time || ''} onBlur={(e)=>saveTime(p.id, Number(e.target.value) || null)} /></label>
+                <button className="btn" onClick={() => downloadOne(p)} disabled={downloadingPhotoId === p.id}>
+                  {downloadingPhotoId === p.id ? 'Baixando...' : 'Baixar'}
+                </button>
                 <button className="btn danger" onClick={()=>del(p.id)}>Excluir</button>
               </div>
             </div>

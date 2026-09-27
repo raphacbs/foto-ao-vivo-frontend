@@ -116,3 +116,13 @@ export async function getConfig(key: string) {
 export async function setConfig(key: string, value: string | number) {
   return unwrap(http.put('/config', { key, value }))
 }
+
+export async function downloadPhoto(id: string) {
+  const { data } = await http.get(`/photos/${id}/download`, { responseType: 'blob' })
+  return data as Blob
+}
+
+export async function downloadAllPhotos() {
+  const { data } = await http.get('/photos/download/all', { responseType: 'blob' })
+  return data as Blob
+}
