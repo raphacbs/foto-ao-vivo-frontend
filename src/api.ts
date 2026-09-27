@@ -126,3 +126,8 @@ export async function downloadAllPhotos() {
   const { data } = await http.get('/photos/download/all', { responseType: 'blob' })
   return data as Blob
 }
+
+export async function downloadSelectedPhotos(ids: string[]) {
+  const { data } = await http.post('/photos/download/selected', { ids }, { responseType: 'blob' })
+  return data as Blob
+}

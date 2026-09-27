@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Snackbar } from '@mui/material'
+import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded'
 import {
   createSocketConnection,
   deletePhoto,
   downloadAllPhotos,
+  downloadSelectedPhotos,
   downloadPhoto,
   getConfig,
   getPhotoUrl,
@@ -25,6 +27,7 @@ export default function Admin(){
   const [selectedPhotoIds, setSelectedPhotoIds] = useState([])
   const [batchDeleting, setBatchDeleting] = useState(false)
   const [batchDownloadingAll, setBatchDownloadingAll] = useState(false)
+  const [batchDownloadingSelected, setBatchDownloadingSelected] = useState(false)
   const [downloadingPhotoId, setDownloadingPhotoId] = useState(null)
   const [feedback, setFeedback] = useState({ open: false, message: '', severity: 'info' })
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
@@ -258,6 +261,34 @@ export default function Admin(){
     }
   }
 
+  const downloadSelected = async () => {
+    if (!selectedPhotoIds.length) {
+      notify('warning', 'Selecione fotos para baixar.')
+      return
+    }
+
+    setBatchDownloadingSelected(true)
+    logInfo('admin', 'Selected batch photo download started', { total: selectedPhotoIds.length })
+
+    try {
+      const blob = await downloadSelectedPhotos(selectedPhotoIds)
+      const now = new Date()
+      const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`
+      triggerBrowserDownload(blob, `fotos-selecionadas-${stamp}.zip`)
+      notify('success', 'Download das fotos selecionadas concluido!')
+      logInfo('admin', 'Selected batch photo download completed', { total: selectedPhotoIds.length })
+    } catch (e) {
+      logError('admin', 'Selected batch photo download failed', {
+        message: e?.message,
+        status: e?.response?.status,
+        response: e?.response?.data,
+      })
+      notify('error', e?.response?.data?.error || 'Falha ao baixar fotos selecionadas')
+    } finally {
+      setBatchDownloadingSelected(false)
+    }
+  }
+
   return (
     <div className="admin-page">
       <div className="admin-header">
@@ -296,8 +327,11 @@ export default function Admin(){
           </div>
           <div className="field batch-field">
             <label>Baixar fotos</label>
-            <button className="btn" onClick={downloadAll} disabled={!photos.length || batchDownloadingAll}>
+            <button className="btn" onClick={downloadAll} disabled={!photos.length || batchDownloadingAll || batchDownloadingSelected}>
               {batchDownloadingAll ? 'Baixando...' : 'Baixar todas'}
+            </button>
+            <button className="btn" onClick={downloadSelected} disabled={!selectedPhotoIds.length || batchDownloadingSelected || batchDownloadingAll}>
+              {batchDownloadingSelected ? 'Baixando...' : `Baixar ${selectedPhotoIds.length || ''} selecionadas`}
             </button>
           </div>
         </div>
@@ -319,6 +353,7 @@ export default function Admin(){
               <div className="controls">
                 <label>Tempo (s): <input type="number" defaultValue={p.display_time || ''} onBlur={(e)=>saveTime(p.id, Number(e.target.value) || null)} /></label>
                 <button className="btn" onClick={() => downloadOne(p)} disabled={downloadingPhotoId === p.id}>
+                  <DownloadRoundedIcon fontSize="small" />
                   {downloadingPhotoId === p.id ? 'Baixando...' : 'Baixar'}
                 </button>
                 <button className="btn danger" onClick={()=>del(p.id)}>Excluir</button>
