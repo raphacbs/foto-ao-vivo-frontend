@@ -221,6 +221,20 @@ export default function Admin(){
       triggerBrowserDownload(blob, photo.originalname || photo.filename || `foto-${photo.id}.jpg`)
       logInfo('admin', 'Single photo download completed', { id: photo.id })
     } catch (e) {
+      if (e?.response?.status === 404 && photo?.filename) {
+        // Fallback for environments where /photos/:id/download is not yet available.
+        const fallbackLink = document.createElement('a')
+        fallbackLink.href = getPhotoUrl(photo.filename)
+        fallbackLink.download = photo.originalname || photo.filename || `foto-${photo.id}.jpg`
+        fallbackLink.target = '_blank'
+        document.body.appendChild(fallbackLink)
+        fallbackLink.click()
+        fallbackLink.remove()
+        notify('info', 'Download realizado via link direto da imagem.')
+        logInfo('admin', 'Single photo download fallback used', { id: photo.id, filename: photo.filename })
+        return
+      }
+
       logError('admin', 'Single photo download failed', {
         id: photo.id,
         message: e?.message,
