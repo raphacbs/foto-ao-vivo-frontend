@@ -42,25 +42,11 @@ jobs:
           # Substitui a linha "image: ..." do frontend pela nova imagem com a tag do commit atual
           sed -i "s|image: ghcr.io/raphacbs/.*react.*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}|g" k8s/app-node.yaml
 
-      - name: Configurar kubectl
-        if: ${{ secrets.KUBE_CONFIG != '' }}
-        uses: azure/setup-kubectl@v4
-
-      - name: Deploy no Kubernetes
-        if: ${{ secrets.KUBE_CONFIG != '' }}
+      - name: Commitar alteração do manifesto
         run: |
-          mkdir -p ~/.kube
-          cat <<'EOF' > ~/.kube/config
-          ${{ secrets.KUBE_CONFIG }}
-          EOF
-
-          kubectl apply -f k8s/app-node.yaml
-          kubectl rollout status deployment/react-frontend --timeout=180s
-          
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-          
-          # Adiciona o arquivo modificado e faz o commit de volta no repositório
+
           git add k8s/app-node.yaml
           # A linha abaixo garante que o pipeline não quebre caso a imagem já estivesse atualizada
           git diff --quiet && git diff --staged --quiet || (git commit -m "chore: atualiza imagem react para ${{ github.sha }}" && git push)
