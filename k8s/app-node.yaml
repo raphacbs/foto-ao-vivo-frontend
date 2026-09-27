@@ -32,7 +32,7 @@ spec:
         - name: ghcr-secret
       containers:
         - name: react-frontend
-          image: ghcr.io/raphacbs/react-frontend:dfc167593f78b8099a941f8997f965dbd6e67df5
+          image: ghcr.io/raphacbs/react-frontend:0e690e815b38ef9452e139288b0b000a5c5d05ed
           ports:
             - containerPort: 80
           resources:
